@@ -1,0 +1,69 @@
+<?php
+
+/**
+ * Implements hook_schema()
+ */
+function weatherlocator_schema()
+{
+    $schema['city_location'] = [
+        'description' => 'Base table for weather information for a city',
+        'fields' => [
+            'lid' => [
+                'description' => 'Primary ID for a location',
+                'type' => 'serial',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ],
+            'location' => [
+                'description' => 'Specified location for getting weather information',
+                'type' => 'varchar',
+                'length' => 255,
+                'not null' => TRUE,
+            ],
+            'lastUpdate' => [
+                'description' => 'UNIX timestamp in ms of last update.',
+                'type' => 'varchar',
+                'length' => 100,
+                'default' => 0,
+            ],
+            'weatherData' => [
+                'description' => 'Data fetched from API',
+                'type' => 'text',
+            ],
+            'uid' => [
+                'description' => 'Specifies for who is this city',
+                'type' => 'int',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ],
+            'selected' => [
+                'description' => 'Used for selecting certain city info to show in block',
+                'type' => 'int',
+                'default' => 0
+            ]
+        ],
+        'unique keys' => [
+            'lid_uid' => ['lid', 'uid'],
+            'lid' => ['lid'],
+        ],
+        'primary key' => ['lid'],
+        'foreign keys' => [
+            'location_user' => [
+                'table ' => 'users',
+                'columns' => ['uid' => 'uid'],
+            ],
+        ],
+    ];
+
+    return $schema;
+}
+
+/**
+ * Implements hook_enable()
+ */
+function weatherlocator_enable()
+{
+    $permissions = ['view add weather info'];
+    user_role_grant_permissions(DRUPAL_AUTHENTICATED_RID, $permissions);
+    
+}

@@ -1,0 +1,7 @@
+name = Weather Locator system
+description = Enables user to add various places with actual weather situation
+core = 7.x
+package = Drupal 7 - custom modules
+
+files[] = weatherlocator.module
+files[] = weatherlocator.install

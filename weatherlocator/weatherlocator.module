@@ -1,0 +1,411 @@
+<?php
+
+//TODO: auto-position block on site
+
+define('API_KEY', '3d6c0c474c7e420596383154201509');
+
+//!BLOCK
+/**
+ * Implements hook_permission()
+ */
+function weatherlocator_permission()
+{
+    return [
+        'view add weather info' => [
+            'title' => t('View/Add weather info'),
+            'description' => t('Enables management of weather system.')
+        ]
+    ];
+}
+
+
+/**
+ * Implements hook_block_info()
+ */
+function weatherlocator_block_info()
+{
+    $block = [];
+
+    $block['add_city'] = [
+        'info' => t('Enables user to add a new city.'),
+        'region' => 'sidebar_second',
+        'status' => TRUE,
+        'visibility' => BLOCK_VISIBILITY_LISTED,
+        'pages' => "user/*/locations",
+    ];
+
+    $block['show_city'] = [
+        'info' => t('Shows selected city'),
+        'region' => 'sidebar_second',
+        'status' => TRUE,
+    ];
+
+    return  $block;
+}
+
+/**
+ * Implements hook_block_view()
+ */
+function weatherlocator_block_view($delta = '')
+{
+
+    global $user;
+
+    $location = db_select('city_location', 'loc')
+        ->fields('loc')
+        ->condition('uid', $user->uid)
+        ->condition('selected', 1)
+        ->execute();
+
+    $content = [];
+    if ($location) {
+
+        $location = template_prepare($location);
+
+        $content = [
+            '#theme' => 'location_block',
+            '#location' => $location,
+        ];
+    } else {
+        $content = [
+            '#markup' => '<p>' . t('Select a city in Locations user settings.') . '</p>',
+        ];
+    }
+
+    if (user_access('view add weather info')) {
+        switch ($delta) {
+            case 'add_city':
+                $block = [
+                    'subject' => t('Add a new city.'),
+                    'content' => [
+                        'weatherlocator_form' => [
+                            drupal_get_form('weatherlocator_block_form'),
+                        ]
+                    ],
+                ];
+
+                $block['content']['#attached']['css'][] = drupal_get_path('module', 'weatherlocator') . '/weatherlocator.css';
+                break;
+            case 'show_city':
+                $block = [
+                    'subject' => t('Selected city.'),
+                    'content' => $content,
+                ];
+                break;
+        }
+    }
+
+    return $block;
+}
+
+//!FORMs
+/**
+ * Implements hook_form()
+ */
+function weatherlocator_block_form()
+{
+    $form = [];
+
+    $form[] = [
+        'city' => [
+            '#title' => t('City name'),
+            '#type' => 'textfield',
+            '#required' => TRUE,
+        ],
+        'submit' => [
+            '#type' => 'submit',
+            '#value' => 'Add city',
+        ],
+    ];
+
+    return $form;
+}
+
+function weatherlocator_select_form()
+{
+    $form = [];
+
+    $form = [
+        'select_city' => [
+            '#title' => t('Choose a city'),
+            '#type' => 'select',
+            '#options' => get_all_cities(),
+        ],
+        'submit' => [
+            '#type' => 'submit',
+            '#value' => 'Select City',
+        ]
+    ];
+
+    return $form;
+}
+
+function weatherlocator_select_form_submit($form, &$form_state)
+{
+    global $user;
+
+    try {
+
+        db_update('city_location')
+            ->fields(['selected' => 0])
+            ->condition('uid', $user->uid)
+            ->execute();
+
+        db_update('city_location')
+            ->fields(['selected' => 1])
+            ->condition('lid', $form_state['values']['select_city'])
+            ->execute();
+
+        drupal_set_message(t('City selected.'));
+    } catch (Exception $e) {
+        drupal_set_message(t('A problem occured while setting up view for city.'), 'warning');
+    }
+}
+
+
+function weatherlocator_block_form_submit($form, &$form_state)
+{
+    global $user;
+
+    $curlresp = get_data_from_weather_api($form_state['values']['city']);
+
+    if (!$curlresp['error']) {
+        //skontroluj, ci mesto s danym nazvom neexistuje
+        $locations = locations_list($user->uid);
+        $locationExists = FALSE;
+        foreach ($locations as $location) {
+            if (strcmp(strtolower($curlresp['locationData']->location->name), strtolower($location->location)) == 0) {
+                $locationExists = TRUE;
+            }
+        }
+
+        if (!$locationExists) {
+            location_insert($curlresp['locationData']);
+        } else {
+
+
+            drupal_set_message(t('City with @cityname is already in your list.', ['$cityname' => $curlresp['locationData']->location->name]), 'warning');
+        }
+    }
+}
+
+//!MENU
+/**
+ * Implements hook_menu()
+ */
+function weatherlocator_menu()
+{
+    $items['user/%/locations'] = [
+        'title' => t('Locations'),
+        'page callback' => 'weatherlocator_show_locations',
+        'page arguments' => [1],
+        'access arguments' => ['access location'],
+        'type' => MENU_LOCAL_TASK
+    ];
+
+    $items['user/%/locations/%/delete'] = [
+        'page callback' => 'weatherlocator_delete_location',
+        'page arguments' => [3],
+        'access arguments' => ['delete location'],
+    ];
+
+    return $items;
+}
+
+
+//!CONTENT
+function weatherlocator_show_locations($uid)
+{
+    $date = new DateTime();
+
+    //ziskaj z DB
+    $result = locations_list($uid);
+
+    $updated = 0;
+
+    //skontroluj lastUpdate kazdej lokacia a ak je starsia ako hodina, tak update
+    foreach ($result as $location) {
+        if (($date->getTimestamp() - intval($location->lastUpdate)) > 3600000) {
+            location_update($location->lid, $location->location);
+            $updated += 1;
+        }
+    }
+
+    if ($updated > 0) {
+        drupal_set_message(t('Updated cities @count', ['@count' => $updated]));
+    }
+
+    $result = locations_list($uid);
+
+    //priprava pre template
+    $locations = template_prepare($result);
+
+    $re = [
+        'form' => [
+            drupal_get_form('weatherlocator_select_form'),
+        ],
+        'table' => [
+            '#theme' => 'locations_display',
+            '#locations' => $locations,
+        ],
+    ];
+
+    return $re;
+}
+
+function template_prepare($result)
+{
+    $locations = [];
+    foreach ($result as $location) {
+
+        list($temperature, $weather, $icon) = explode('\\', $location->weatherData);
+
+        $locations[$location->location] = [
+            'id' => $location->lid,
+            'temperature' => $temperature,
+            'weather' => $weather,
+            'icon' => $icon,
+        ];
+    }
+
+    return $locations;
+}
+
+function weatherlocator_delete_location($lid)
+{
+    global $user;
+    //delete location
+    location_delete($lid);
+    drupal_goto('user/' . $user->uid . '/locations');
+}
+
+//!OTHERS
+/**
+ * Implements hook_theme()
+ */
+function weatherlocator_theme()
+{
+    return [
+        'locations_display' => [
+            'template' => 'weatherlocator_loc_data',
+            'variables' => [
+                'locations' => NULL,
+            ],
+        ],
+        'location_block' => [
+            'template' => 'weatherlocator_block_city',
+            'variables' => [
+                'location' => NULL,
+            ],
+        ],
+    ];
+}
+
+function locations_list($uid)
+{
+    $query = db_select('city_location', 'loc')
+        ->fields('loc')
+        ->condition('uid', $uid);
+
+    $result = $query->execute();
+
+    return $result;
+}
+
+function location_insert($response)
+{
+    global $user;
+
+    $date = new DateTime();
+
+    try {
+        //string data pre insert do DB
+        $weatherData = "{$response->current->temp_c}\\{$response->current->condition->text}\\{$response->current->condition->icon}";
+
+        db_insert('city_location')
+            ->fields([
+                'location' => $response->location->name,
+                'lastUpdate' => strval($date->getTimestamp()),
+                'weatherData' => $weatherData,
+                'uid' => $user->uid,
+            ])
+            ->execute();
+
+        drupal_set_message(t("City added to list"));
+    } catch (Exception $e) {
+        drupal_set_message(t("Insertion failed"), 'warning');
+    }
+}
+
+function location_update($lid, $lname)
+{
+    try {
+
+        $curlresp = get_data_from_weather_api($lname);
+
+        $weatherData = $curlresp['locationData']->current->temp_c . "\\" . $curlresp['locationData']->current->condition->text . "\\" . $curlresp['locationData']->current->condition->icon;
+
+        db_update('city_location')
+            ->fields(['weatherData' => $weatherData])
+            ->condition('lid', $lid)
+            ->execute();
+    } catch (Exception $e) {
+        drupal_set_message(t('Failed to update (some) cities.'), 'warning');
+    }
+}
+
+function location_delete($lid)
+{
+
+    try {
+        db_delete('city_location')
+            ->condition('lid', $lid)
+            ->execute();
+
+        drupal_set_message(t('Location deleted'));
+    } catch (Exception $e) {
+        drupal_set_message(t('Could not delete a location'), 'warning');
+    }
+}
+
+function get_data_from_weather_api($lname)
+{
+
+    //skontroluje, ci submit value neobsahuje medzery
+    if (mb_strrchr($lname, " ", false, 'UTF-8')) {
+        $lname = str_replace(' ', '%20', $lname);
+    }
+
+    //ziskaj data z API
+    $ch = curl_init("http://api.weatherapi.com/v1/current.json?key=" . API_KEY . "&q=" . $lname);
+
+    //zapis ich do premennej
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+    $curlresp = curl_exec($ch);
+
+    //dekoduj
+    $curlresp = json_decode($curlresp);
+
+    $error = curl_errno($ch) !== 0 ? TRUE : FALSE;
+
+    curl_close($ch);
+
+    return ['locationData' => $curlresp, 'error' => $error];
+}
+
+/**
+ * Vytvori pole moznosti pre weatherlocator_select_form
+ */
+function get_all_cities()
+{
+    global $user;
+    $locations = locations_list($user->uid);
+
+    $cities = [];
+
+    foreach ($locations as $location) {
+        $cities[$location->lid] = $location->location;
+    }
+
+    return $cities;
+}
