@@ -168,6 +168,9 @@ function weatherlocator_block_form_submit($form, &$form_state)
 
     $curlresp = get_data_from_weather_api(strtolower($form_state['values']['city']));
 
+    $fp = fopen(drupal_get_path('module', 'weatherlocator') . '/log.txt', 'w');
+    fwrite($fp, json_encode($curlresp));
+
     if (!$curlresp['error']) {
 
         //skontroluje, ci zadane query bolo v ramci API najdene
