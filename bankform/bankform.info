@@ -1,0 +1,9 @@
+name = Bankform
+description = Creates special form for users to notify bank about certain information
+core = 7.x
+package = Drupal 7 - custom modules
+
+files[] = bankform.module
+files[] = bankform.install
+
+dependencies[] = entity

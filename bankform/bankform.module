@@ -1,0 +1,578 @@
+<?php
+//TODO: Prehlad
+
+//!NODE
+/**
+ * Vytvorene na zaklade: https://www.drupal.org/docs/7/howtos/create-a-node-in-code
+ */
+function bankform_create_node(
+    $bankform
+) {
+    global $user;
+
+    //vytvor entitu - NODE, bundle: bankform
+    $node_specifications = [
+        'type' => 'bankform',
+        'uid' => $user->uid,
+        'status' => 1,
+        'comment' => 0,
+        'promote' => 0,
+    ];
+
+    $entity = entity_create('node', $node_specifications);
+
+    //lahsi sposob ako nastavovania hodnot cez wrapper, napriklad jazyk
+    $ewrapper = entity_metadata_wrapper('node', $entity);
+
+    $ewrapper->title->set($bankform['firstname'] . ' ' . $bankform['surname']);
+
+    //Data
+    $ewrapper->bankform_firstname->set($bankform['firstname']);
+    $ewrapper->bankform_surname->set($bankform['surname']);
+    $ewrapper->bankform_city->set($bankform['city']);
+    $ewrapper->bankform_street->set($bankform['street']);
+    $ewrapper->bankform_number->set($bankform['number']);
+    $ewrapper->bankform_pc->set($bankform['pc']);
+    $ewrapper->bankform_iban->set($bankform['iban']);
+
+    //Datum submitu
+    $submited_date = new DateTime("now");
+    $entity->bankform_submited_date[LANGUAGE_NONE][0] = array(
+        'value' => date_format($submited_date, 'd.m.Y H:i:s'),
+        'timezone' => 'UTC',
+        'timezone_db' => 'UTC',
+    );
+
+    $ewrapper->save();
+}
+
+//!THEME
+/**
+ * Implements hook_theme()
+ */
+function bankform_theme()
+{
+    return [
+        'bankform_overview' => [
+            'variables' => [
+                'nodes' => [],
+            ],
+            'template' => 'bankform_overview',
+        ],
+    ];
+}
+
+//!PERMISSION
+/**
+ * Implements hook_permission()
+ */
+function bankform_permission()
+{
+    return [
+        'access bankform' => [
+            'title' => t('Access Bank Form'),
+            'description' => t('Gives access to fill in / send Bank Form'),
+        ],
+    ];
+}
+
+//!MENU
+/**
+ * Implements hook_menu()
+ */
+function bankform_menu()
+{
+    $items['bankform/init'] = [
+        'title' => t('Bank Form'),
+        'description' => 'Form for banking purposes',
+        'page callback' => 'bankform_init_bankform',
+        'access callback' => 'user_access',
+        'access arguments' => ['access bankform'],
+        'type' => MENU_NORMAL_ITEM,
+    ];
+
+    $items['bankform/1'] = [
+        'title' => t('Bank Form - First Step - What\'s your name ?'),
+        'description' => 'Form for banking purposes',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => ['bankform_first_form'],
+        'access callback' => 'user_access',
+        'access arguments' => ['access bankform'],
+        'type' => MENU_CALLBACK,
+    ];
+
+    $items['bankform/2'] = [
+        'title' => t('Bank Form - Second Step - Where are you from ?'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => ['bankform_second_form'],
+        'access callback' => 'user_access',
+        'access arguments' => ['access bankform'],
+        'type' => MENU_CALLBACK,
+    ];
+
+    $items['bankform/3'] = [
+        'title' => t('Bank Form - Third Step - IBAN'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => ['bankform_third_form'],
+        'access callback' => 'user_access',
+        'access arguments' => ['access bankform'],
+        'type' => MENU_CALLBACK,
+    ];
+
+    $items['bankform/4'] = [
+        'title' => t('Summary'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => ['bankform_fourth_form'],
+        'access callback' => 'user_access',
+        'access arguments' => ['access bankform'],
+        'type' => MENU_CALLBACK,
+    ];
+
+    $items['user/%/bankform-overview'] = [
+        'title' => t('Bankform - overview'),
+        'page callback' => 'bankform_get_overview',
+        'access callback' => 'user_access',
+        'access arguments' => ['administer content'],
+        'type' => MENU_LOCAL_TASK,
+    ];
+
+    return $items;
+}
+
+//!FORM
+/**
+ * Implements hook_form()
+ */
+function bankform_first_form()
+{
+    $form['firstname'] = [
+        '#type' => 'textfield',
+        '#title' => t('First Name'),
+        '#description' => t('Write your firstname'),
+    ];
+
+    $form['surname'] = [
+        '#type' => 'textfield',
+        '#title' => t('Surname'),
+        '#description' => t('Write your surname'),
+    ];
+
+    if (!$_SESSION['bankform']['summary']) {
+        $form['navigation']  = bankform_navigation_form();
+    }
+
+    $form['#attached']['css'] = [drupal_get_path('module', 'bankform').'/bankform-style.css'];
+
+    return $form;
+}
+
+function bankform_second_form()
+{
+
+    $form['city'] = [
+        '#type' => 'textfield',
+        '#title' => t('City'),
+    ];
+
+    //Malo by ich zgrupnut - nefunguje celkom
+    $form['street'] = [
+        '#type' => 'textfield',
+        '#title' => t('Street'),
+    ];
+
+    $form['number'] = [
+        '#type' => 'textfield',
+        '#title' => t('Number'),
+        '#description' => t('Number of house of flat: X... , X.../X...'),
+    ];
+
+    $form['pc'] = [
+        '#type' => 'textfield',
+        '#title' => t('Postal Code'),
+        '#description' => t('SK postal code: XXX XX'),
+    ];
+
+    if (!$_SESSION['bankform']['summary']) {
+        $form['navigation']  = bankform_navigation_form();
+    }
+
+    $form['#attached']['css'] = [drupal_get_path('module', 'bankform').'/bankform-style.css'];
+
+    return $form;
+}
+
+function bankform_third_form()
+{
+    drupal_set_title("Bank Form - Third Step - IBAN");
+
+    $form['iban'] = [
+        '#type' => 'textfield',
+        '#title' => t('IBAN'),
+        '#description' => t('Slovak IBAN should look as following example: SK0000000000000000000000'),
+    ];
+
+    //Nevaliduje sa, pretoze je vyuzita v tretom aj vo stvrtom kroku
+    $form['navigation'] = bankform_navigation_form();
+
+    $form['#attached']['css'] = [drupal_get_path('module', 'bankform').'/bankform-style.css'];
+
+    return $form;
+}
+
+function bankform_fourth_form($form, &$form_state)
+{
+    //skopiruje predosle formulare
+    $form = array_merge(
+        bankform_first_form(),
+        bankform_second_form(),
+        bankform_third_form()
+    );
+
+    foreach ($form as $key => $input) {
+        if ($key != 'navigation') {
+            $form[$key]['#attributes'] = ['disabled' => 'disabled'];
+        }
+    }
+
+    $form['#attached']['css'] = [drupal_get_path('module', 'bankform').'/bankform-style.css'];
+
+    return $form;
+}
+
+/**
+ * Kazda stranka pouziva tie iste buttony
+ */
+function bankform_navigation_form()
+{
+    $step = bankform_get_step(current_path(), 1);
+
+    if ($step > 1) {
+        $form['previous'] = [
+            '#type' => 'submit',
+            '#value' => t('Previous page'),
+            '#submit' => ['move_to_previous_page'],
+            '#validate' => ['previous_validate'],
+        ];
+    }
+
+    if ($step < 4)
+        $form['next'] = [
+            '#type' => 'submit',
+            '#value' => t('Next page'),
+            '#submit' => ['move_to_next_page'],
+            '#validate' => ['next_validate'],
+        ];
+
+    if ($step == 4)
+        $form['submit'] = [
+            '#type' => 'submit',
+            '#value' => t('Send form'),
+        ];
+
+    return $form;
+}
+
+//!Alter forms
+/**
+ * Implements hook_form_alter()
+ */
+function bankform_form_alter(&$form, &$form_state, $form_id)
+{
+    //hook_form() je volany aj po stlaceni SUBMIT buttonu
+    //Ale prazdna input premenna je len pri initializacii
+    //formulara
+    if (empty($form_state['input'])) {
+        if (!isset($_SESSION['bankform'])) {
+            $_SESSION['bankform'] = [];
+        }
+
+        switch ($form_id) {
+            case 'bankform_first_form':
+                bankform_prefill_form($form, ['firstname', 'surname']);
+                break;
+            case 'bankform_second_form':
+                bankform_prefill_form($form, ['city', 'street', 'number', 'pc']);
+                break;
+            case 'bankform_third_form':
+                bankform_prefill_form($form, ['iban']);
+                break;
+            case 'bankform_fourth_form':
+                bankform_prefill_form($form, [
+                    'firstname', 'surname',
+                    'city', 'street', 'number', 'pc',
+                    'iban'
+                ]);
+                break;
+            default:
+        }
+    }
+}
+
+//!validation handlers
+//#required neumoznovalo vratenie sa na predchazdajuci krok pomocou Submit tlacidla
+function previous_validate($form, &$form_state)
+{
+}
+
+function next_validate($form, &$form_state)
+{
+    //krok urcuje, aky typ validacie sa ma vykonat
+    $step = bankform_get_step(current_path(), 1);
+
+    switch ($step) {
+        case 1:
+            $firstname = get_array_value($form_state['values'], 'firstname');
+            $surname = get_array_value($form_state['values'], 'surname');
+
+            $checkList = [
+                'firstname' => [
+                    $firstname,
+                    'Please, enter your name',
+                ],
+                'surname' => [
+                    $surname,
+                    'Please, enter your surname'
+                ],
+            ];
+
+            check_input($checkList);
+            break;
+        case 2:
+            $city = get_array_value($form_state['values'], 'city');
+            $street = get_array_value($form_state['values'], 'street');
+            $number = get_array_value($form_state['values'], 'number');
+            $pc = get_array_value($form_state['values'], 'pc');
+
+            $checkList = [
+                'city' => [
+                    $city,
+                    'Please, enter city that you live in',
+                ],
+                'street' => [
+                    $street,
+                    'Please, enter the street',
+                ],
+                'number' => [
+                    $number,
+                    'Please, enter your house / flat number',
+                ],
+                'pc' => [
+                    $pc,
+                    'Please, enter your postal code',
+                ],
+            ];
+            check_input($checkList);
+
+            //doplnena validacia
+            if (preg_match('/((\d{1,}\/\d{1,})|(\d{1,}))/', $number) == 0) {
+                form_set_error('number', t('Please, enter Number in following pattern: X, X/X'));
+            }
+
+            if (preg_match('/^\d{3}\s\d{2}$/', $pc) == 0) {
+                form_set_error('pc', t('Please, enter SLOVAK Postal Code in following pattern: XXX XX'));
+            }
+
+            break;
+        case 3:
+            $iban = get_array_value($form_state['values'], 'iban');
+
+            check_input(['iban' => [$iban, 'Please, enter IBAN of your account']]);
+
+            if (preg_match('/^[a-zA-Z]{2}\d{22}$/', $iban) == 0) {
+                form_set_error('iban', t('Please, follow the same pattern while entering IBAN as requested'));
+            }
+            break;
+        default:
+    }
+}
+
+//!submit handlers
+function move_to_previous_page($form, &$form_state)
+{
+    $step = bankform_get_step(current_path(), 1);
+
+    set_session_data($step, $form_state);
+
+    //skontroluj patricne hodnoty a zmen
+    if ($step <= 1) {
+        $step = 1;
+    } else {
+        $step--;
+    }
+
+    //Vracia spat ovladacie prvky formularu jednolitvym krokom
+    $_SESSION['bankform']['summary'] = FALSE;
+
+    drupal_goto('bankform/' . $step);
+}
+
+
+function move_to_next_page($form, &$form_state)
+{
+    $step = bankform_get_step(current_path(), 1);
+
+    set_session_data($step, $form_state);
+
+    //skontroluj patricne hodnoty a zmen
+    if ($step >= 3) {
+        $step = 4;
+    } else {
+        $step++;
+    }
+
+    drupal_goto('bankform/' . $step);
+}
+
+//Odosiela data do DB
+function bankform_fourth_form_submit($form, &$_form_state)
+{
+    try {
+        bankform_create_node($_SESSION['bankform']);
+        $_SESSION['bankform'] = [];
+        drupal_set_message(t('Bankform - Form was successfully submited.'));
+        drupal_goto('/');
+    } catch (Exception $e) {
+        drupal_set_message(t('Bankform - An error occured'), 'error');
+    }
+}
+
+//!OTHERS
+/**
+ * Vezme URI a rozdeli ju do array - nakoniec vrati len krok v Bankform
+ * @param String $path Cesta z ktorej chceme ziskat data - "page/<num>"
+ * @param Number $index Index Parsovatelne cislo z URI ktore sa vrati
+ * @return Number 
+ */
+function bankform_get_step($path, $index)
+{
+    //split URI na jendotlive hodnoty
+    $path = explode('/', $path);
+
+    //parsni na num
+    return intval($path[$index]);
+}
+
+/**
+ * Ziskava data z array - ak neexistuju, vrati prazdny string.
+ * @param Array $array Array v ktorej sa nachadzaju hladane data
+ * @param String $value hladana hodnota
+ * @return String "" alebo hodnota ktoru sme hladali
+ */
+function get_array_value($array, $value)
+{
+    if (isset($array[$value])) {
+        return trim($array[$value]);
+    }
+
+    return '';
+}
+
+/**
+ * Skontroluje vlozene pole, ktore obsahuje input z formulara
+ * zadanu hodnotu a chybovu hlasku. Ak $insertedValue je empty == TRUE,
+ * form_set_error vypise $errorMessage.
+ * 
+ * @param Array $inputs = [$inputName => [$insertedValue, $errorMessage]]
+ * @return Boolean TRUE if error
+ */
+function check_input($inputs)
+{
+    $errCount = 0;
+
+    foreach ($inputs as $input => $value) {
+        if (empty($value[0])) {
+            form_set_error($input, t($value[1]));
+            $errCount++;
+        }
+    }
+
+    return $errCount > 0 ? TRUE : FALSE;
+}
+
+/**
+ * Do zadaneho formulara nacita zo session potrebne udaje.
+ * @param Array &$form Formular, ktory chceme naplnit
+ * @param Array $inputNames  ['name of input1', 'name of input2']
+ */
+function bankform_prefill_form(&$form, $inputNames)
+{
+    foreach ($inputNames as $inputName) {
+        $inputValue = get_array_value($_SESSION['bankform'], $inputName);
+        $form[$inputName]['#value'] = $inputValue;
+    }
+}
+
+/**
+ * Nastavuje pociatocne hodnoty a initializuje $_SESSION['bankform']
+ */
+function bankform_init_bankform()
+{
+
+    //RESET
+    $_SESSION['bankform'] = [];
+
+    //Summary sluzi ako boolean pre poslednu stranku
+    $_SESSION['bankform']['summary'] = FALSE;
+
+    drupal_goto('bankform/1');
+}
+
+/**
+ * 
+ */
+function bankform_get_overview()
+{
+    $query = new EntityFieldQuery();
+    $entities = $query->entityCondition('entity_type', 'node')
+        ->propertyCondition('type', 'bankform')
+        ->execute();
+
+    $nodesOverview = [];
+
+    if (!empty($entities['node'])) {
+        foreach ($entities['node'] as $entity) {
+            $node = node_load($entity->nid);
+
+            $nwrapper = entity_metadata_wrapper('node', $node);
+
+            $formatedNode['firstname'] = $nwrapper->bankform_firstname->value();
+            $formatedNode['surname'] = $nwrapper->bankform_surname->value();
+            $formatedNode['city'] = $nwrapper->bankform_city->value();
+            $formatedNode['street'] = $nwrapper->bankform_street->value();
+            $formatedNode['number'] = $nwrapper->bankform_number->value();
+            $formatedNode['pc'] = $nwrapper->bankform_pc->value();
+            $formatedNode['iban'] = $nwrapper->bankform_iban->value();
+            $formatedNode['date_submitted'] = $node->bankform_submited_date[LANGUAGE_NONE][0]['value'];
+
+            $nodesOverview[$node->nid] = $formatedNode;
+        }
+    }
+
+    return theme('bankform_overview', ['nodes' => $nodesOverview]);
+}
+
+/**
+ * Nastav $_SESSION['bankform'] na prislusne hodnoty podla 
+ * stranky
+ * @param int $step cislo stranky
+ */
+function set_session_data($step, $form_state)
+{
+    switch ($step) {
+        case 1:
+            $_SESSION['bankform']['firstname'] = $form_state['values']['firstname'];
+            $_SESSION['bankform']['surname'] = $form_state['values']['surname'];
+            break;
+        case 2:
+            $_SESSION['bankform']['city'] = $form_state['values']['city'];
+            $_SESSION['bankform']['street'] = $form_state['values']['street'];
+            $_SESSION['bankform']['number'] = $form_state['values']['number'];
+            $_SESSION['bankform']['pc'] = $form_state['values']['pc'];
+            break;
+        case 3:
+            $_SESSION['bankform']['iban'] = $form_state['values']['iban'];
+            $_SESSION['bankform']['summary'] = TRUE;
+            break;
+        default:
+    }
+}

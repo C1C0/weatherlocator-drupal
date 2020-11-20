@@ -1,0 +1,218 @@
+<?php
+
+/**
+ * Implements hook_enable()
+ */
+function bankform_enable()
+{
+    user_role_grant_permissions(DRUPAL_ANONYMOUS_RID, ['access bankform']);
+    user_role_grant_permissions(3, [
+        'create bankform content',
+        'edit any bankform content',
+        'edit own bankform content',
+        'delete any bankform content',
+        'delete own bankform content'
+    ]);
+}
+
+/**
+ * Implement hook_install()
+ */
+function bankform_install()
+{
+
+    $t = get_t();
+
+    //Define the node type
+    $bankform = [
+        'type' => 'bankform',
+        'name' => $t('Bank Form'),
+        'base' => 'node_content',
+        'description' => $t('This is a Bank Form instance'),
+    ];
+
+    //set DEFAULTS
+    $content_type = node_type_set_defaults($bankform);
+
+    //save the content type
+    node_type_save($content_type);
+
+    //Fields
+    foreach (_bankform_installed_fields() as $field) {
+        field_create_field($field);
+    }
+
+    //create instances of fields
+    foreach (_bankform_installed_instances() as $instance) {
+        $instance['entity_type'] = 'node';
+        $instance['bundle'] = $bankform['type'];
+        field_create_instance($instance);
+    }
+
+    //disable commenting options
+    variable_set('comment_bankform', 0);
+    variable_set('comment_default_mode_bankform', 0);
+    variable_set('comment_form_location_bankform', 0);
+    variable_set('comment_subject_field_bankform', 0);
+}
+
+/**
+ * Implement hook_uninstall()
+ */
+function bankform_uninstall()
+{
+    $sql = 'SELECT nid FROM {node} n WHERE n.type = :type';
+    $result = db_query($sql, [':type' => 'bankform']);
+    $nids = [];
+    foreach ($result as $row) {
+        $nids[] = $row->nid;
+    }
+    node_delete_multiple($nids);
+
+    //delete fields
+    foreach (array_keys(_bankform_installed_fields()) as $field) {
+        field_delete_field($field);
+    }
+
+    //delete field instances
+    $instances = field_info_instances('node', 'bankform');
+    foreach ($instances as $instance_name => $instance) {
+        field_delete_instance($instance);
+    }
+
+    //delete the content type
+    node_type_delete('bankform');
+
+    //purge all remaining field info
+    field_purge_batch(1000);
+
+    variable_del('comment_bankform', 0);
+    variable_del('comment_default_mode_bankform', 0);
+    variable_del('comment_form_location_bankform', 0);
+    variable_del('comment_subject_field_bankform', 0);
+}
+
+//!Fields
+/**
+ * @return Array pole, ktore opisuje Fields pouzite pri (od)instalacii 
+ */
+function _bankform_installed_fields()
+{
+    return [
+        'bankform_firstname' => [
+            'field_name' => 'bankform_firstname',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_surname' => [
+            'field_name' => 'bankform_surname',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_city' => [
+            'field_name' => 'bankform_city',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_street' => [
+            'field_name' => 'bankform_street',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_number' => [
+            'field_name' => 'bankform_number',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_pc' => [
+            'field_name' => 'bankform_pc',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_iban' => [
+            'field_name' => 'bankform_iban',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+        'bankform_submited_date' => [
+            'field_name' => 'bankform_submited_date',
+            'type' => 'text',
+            'cardinality' => 1,
+        ],
+    ];
+}
+
+/**
+ * @return Array pole, ktore obsahuje bankform instancie poli pouzite pri
+ * (od)instalacii
+ */
+function _bankform_installed_instances()
+{
+    $t = get_t();
+    return [
+        'bankform_firstname' => [
+            'field_name' => 'bankform_firstname',
+            'label' => $t('Firstname'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_surname' => [
+            'field_name' => 'bankform_surname',
+            'label' => $t('Surname'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_city' => [
+            'field_name' => 'bankform_city',
+            'label' => $t('City'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_street' => [
+            'field_name' => 'bankform_street',
+            'label' => $t('Street'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_number' => [
+            'field_name' => 'bankform_number',
+            'label' => $t('Number'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_pc' => [
+            'field_name' => 'bankform_pc',
+            'label' => $t('Postal code'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_iban' => [
+            'field_name' => 'bankform_iban',
+            'label' => $t('IBAN'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+        'bankform_submited_date' => [
+            'field_name' => 'bankform_submited_date',
+            'label' => $t('Date of submission'),
+            'type' => 'text',
+            'widget' => [
+                'type' => 'text_textfield',
+            ],
+        ],
+    ];
+}
