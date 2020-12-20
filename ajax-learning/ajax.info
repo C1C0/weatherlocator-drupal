@@ -1,0 +1,6 @@
+name = AJAX learning
+description = Creates module where I'm (Kiko) trying variaty of stuff with AJAX calls in DRUPAL
+core = 7.x
+package = Drupal 7 AJAX
+
+files[] = ajax.module
